@@ -71,6 +71,3 @@ python expense_tracker.py
 
 ## 👩‍💻 Author 
 Jyotika Kunder
-## 👩‍💻 Author
-
-Jyotika Ku
