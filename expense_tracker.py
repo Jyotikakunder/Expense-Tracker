@@ -1,12 +1,8 @@
-import json
-try:
-    with open("expenses.json","r") as file:
-        expensesList=json.load(file)
-except FileNotFoundError:
-    expensesList=[]
-def save_expenses():
-    with open("expenses.json","w") as file:
-            json.dump(expensesList,file,indent=4)
+import sqlite3
+conn = sqlite3.connect("expenses.db")
+cursor = conn.cursor()
+cursor.execute("""CREATE TABLE IF NOT EXISTS expenses (id INTEGER PRIMARY KEY AUTOINCREMENT,date TEXT,category TEXT,description TEXT,amount REAL)""")
+conn.commit()
 def add_expense():
     date= input("\nThe date when expense was done(DD/MM/YYYY): ")
     print("Suggested category:Food,Travel,Books,Makeup")
@@ -21,72 +17,97 @@ def add_expense():
             break
         except ValueError:
             print("Please enter a valid amount.")
-    expense= {
-        "date": date,
-        "category": category,
-        "description": description,
-        "amount": amount
-    }
-    expensesList.append(expense)
-    save_expenses()
-    print(" \n DONE. Expense is added succesfully")
+    cursor.execute("""INSERT INTO expenses (date, category, description, amount) VALUES (?, ?, ?, ?)""", (date, category, description, amount))
+    conn.commit()
+    print("\nDone. Expense is added successfully")
 def view_expenses():
-    if( len(expensesList)==0 ):
-        print("No Expenses Added. First add the expenses. ")
-    else:
-        print("===== Your all expenses ======")
-        count= 1
-        for eachExpense in expensesList:
-            print(f"""\nExpense #{count} \nDate:{eachExpense['date']} \nCategory:{eachExpense['category']} \nDescription:{eachExpense['description']} \nAmount:₹{eachExpense['amount']:.2f}""")
-            count+=1 
-def total_expenses():
-    total= 0
-    for eachExpense in expensesList:
-        total = total + eachExpense["amount"]
-    print("\n TOTAL expenses =₹{total:.2f}")
-def update_expenses():
-    if len(expensesList)==0:
+    cursor.execute("SELECT * FROM expenses")
+    rows = cursor.fetchall()
+    if not rows:
         print("No Expenses Available.")
         return
+    else:
+        print("===== Your all expenses ======")
+        for row in rows:
+            print(f"""
+            Expense #{row[0]}
+            Date: {row[1]}
+            Category: {row[2]}
+            Description: {row[3]}
+            Amount: ₹{row[4]:.2f}
+            ---------------------------""") 
+def total_expenses():
+    cursor.execute("SELECT SUM(amount) FROM expenses")
+    total = cursor.fetchone()[0]
+    if total:
+        print(f"Total Expenses: ₹{total:.2f}")
+    else:
+        print("Total Expenses: ₹0.00")
+def update_expenses():
     view_expenses()
-    try:
-        update_index=int(input("Enter expense number to update/edit:"))
-        if update_index>0 and update_index<=len(expensesList):
-            new_category=input("Enter new category:").strip().title()
-            new_description=input("Enter new description:").strip()
-            while True:
-                try:
-                    new_amount=float(input("Enter new amount:"))
-                    if new_amount<=0:
-                        print("Amount must be greater than 0.")
-                        continue
-                    break
-                except ValueError:
-                    print("Please enter a valid amount.")
-            expensesList[update_index-1]["category"]=new_category
-            expensesList[update_index-1]["description"]=new_description
-            expensesList[update_index-1]["amount"]=new_amount
-            save_expenses()
-            print("Expense updated successfully")
-        else:
-            print("Invalid Expense number")
-    except ValueError:
-        print("Please enter valid number")
-def delete_expense():
-    if len(expensesList)==0:
-        print("No Expense Available.")
+    cursor.execute("SELECT * FROM expenses")
+    rows = cursor.fetchall()
+    if not rows:
+        print("No expenses available.")
         return
-    view_expenses()
     try:
-        delete_index=int(input("Enter expense number to delete:"))
-        if delete_index>0 and delete_index<=len(expensesList):
-            expensesList.pop(delete_index-1)
-            save_expenses()
-            print("Expense deleted successfully")
-        else:
-            print("Invalid Expense number")
+        id = int(input("Enter expense ID: "))
     except ValueError:
-        print("Please Enter valid ")
+        print("Invalid input")
+        return
+    new_category = input("New category: ")
+    new_description = input("New description: ")
+    while True:
+        try:
+            new_amount = float(input("New amount: "))
+            if new_amount <= 0:
+                print("Amount must be greater than 0")
+                continue
+            break
+        except ValueError:
+            print("Invalid input")
+    cursor.execute("""UPDATE expenses SET category=?, description=?, amount=? WHERE id=?""", (new_category, new_description, new_amount, id))
+    conn.commit()
+    if cursor.rowcount == 0:
+        print("No such expense ID found.")
+    else:
+        print("Updated successfully")
+def filter_by_category():
+    category = input("Enter category to filter: ").strip().title()
+    cursor.execute("SELECT * FROM expenses WHERE category = ?", (category,))
+    rows = cursor.fetchall()
+    if not rows:
+        print("No expenses found for this category.")
+    else:
+        print(f"\nExpenses for category: {category}")
+        for row in rows:
+            print(f"""Expense #{row[0]}
+                      Date: {row[1]}
+                      Category: {row[2]}
+                      Description: {row[3]}
+                      Amount: ₹{row[4]:.2f}""")
+def delete_expense():
+    view_expenses()
+    cursor.execute("SELECT * FROM expenses")
+    rows = cursor.fetchall()
+    if not rows:
+        print("No expenses available.")
+        return
+    confirm=input("Are you sure you want to delete?(yes/no):").lower()
+    if confirm!="yes":
+       print("Deletion cancelled")
+       return
+    try:
+        id = int(input("Enter expense ID: "))
+    except ValueError:
+        print("Invalid input")
+        return
+    cursor.execute("DELETE FROM expenses WHERE id=?", (id,))
+    conn.commit()
+    if cursor.rowcount == 0:
+        print("No such expense ID found.")
+    else:
+        print("Deleted successfully")
 print(" Welcome to Expense Tracker : ")
 while True:
     print("====MENU====")
@@ -94,8 +115,9 @@ while True:
     print("2. View All Expenses")
     print("3. View Total Expenses")
     print("4. Update/Edit Expenses")
-    print("5. Delete an Expense")
-    print("6. Exit")
+    print("5. Search by category")
+    print("6. Delete an Expense")
+    print("7. Exit")
     try:
         choice= int(input("Please Enter Your Choice : "))
     except ValueError:
@@ -110,9 +132,12 @@ while True:
     elif (choice==4):
         update_expenses()
     elif (choice==5):
+        filter_by_category()
+    elif (choice==6):
         delete_expense()
-    elif(choice == 6):
+    elif(choice ==7):
         print("Thank You for using our system")
         break
     else:
         print("INVALID CHOICE. TRY AGAIN")
+conn.close()
